@@ -59,14 +59,7 @@ export default function Navbar() {
 
           {/* Logo */}
           <Link href="/" className="nav-logo">
-            <div className="nav-logo-icon" aria-hidden="true">
-              {/* Mountain / NZ kiwi SVG icon */}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 18l4-8 4 5 3-4 4 7H3z" />
-                <circle cx="17" cy="7" r="2" fill="currentColor" stroke="none" opacity="0.8" />
-              </svg>
-            </div>
-            <span className="nav-logo-text">NZ Travel</span>
+            <span className="nav-logo-text">New Zealand Travel</span>
           </Link>
 
           {/* Navigation Links */}

@@ -15,10 +15,10 @@
   --bg-elevated:   #F5F8FD;
   --bg-primary:    #EEF3FA;
   --bg-secondary:  #F5F8FD;
-  --bg-card:       rgba(255, 255, 255, 0.75);
-  --bg-glass:      rgba(99, 102, 241, 0.04);
-  --bg-surface:    rgba(255, 255, 255, 0.6);
-  --bg-hover:      rgba(255, 255, 255, 0.9);
+  --bg-card:       #FFFFFF;
+  --bg-glass:      rgba(255, 255, 255, 0.85);
+  --bg-surface:    rgba(255, 255, 255, 0.7);
+  --bg-hover:      rgba(255, 255, 255, 0.95);
 
   /* === Brand Colors === */
   --color-primary:       #4F52D3;
@@ -88,10 +88,10 @@
   --bg-elevated:   #FFFCF5;
   --bg-primary:    #FBF5EA;
   --bg-secondary:  #FFFCF5;
-  --bg-card:       rgba(255, 252, 240, 0.8);
-  --bg-glass:      rgba(217, 119, 6, 0.04);
-  --bg-surface:    rgba(255, 255, 255, 0.65);
-  --bg-hover:      rgba(255, 255, 255, 0.95);
+  --bg-card:       #FFFCF5;
+  --bg-glass:      rgba(255, 255, 255, 0.85);
+  --bg-surface:    rgba(255, 255, 255, 0.75);
+  --bg-hover:      #FFFFFF;
 
   /* 暗琥珀主色 + 沙漠金強調 */
   --color-primary:       #B45309;
@@ -181,10 +181,8 @@ h4, h5, h6 {
   right: 0;
   z-index: 1000;
   height: 64px;
-  background: var(--nav-bg);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border-bottom: 1px solid var(--glass-border);
+  background: transparent;
+  border-bottom: 1px solid transparent;
   display: flex;
   align-items: center;
   padding: 0 24px;
@@ -192,7 +190,9 @@ h4, h5, h6 {
 }
 
 .navbar.scrolled {
-  background: rgba(235, 242, 252, 0.96);
+  background: rgba(235, 242, 252, 0.85);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   border-bottom-color: var(--border-strong);
   box-shadow: 0 2px 20px rgba(74, 90, 122, 0.12);
 }
@@ -421,12 +421,8 @@ h4, h5, h6 {
 }
 
 .aurora-glass:hover {
-  border-color: rgba(99, 102, 241, 0.25);
-  box-shadow: var(--shadow-lg), 0 0 32px var(--glow-card), inset 0 1px 0 rgba(255,255,255,0.08);
-}
-
-[data-theme="summer"] .aurora-glass:hover {
-  border-color: rgba(245, 158, 11, 0.25);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg), 0 0 24px var(--glow-card);
 }
 
 /* ── Buttons ─────────────────────────────────────── */
@@ -995,9 +991,7 @@ h4, h5, h6 {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  z-index: -1;
-  background-color: var(--bg-base);
-  transition: background-color var(--transition-slow);
+  z-index: -2;
 }
 
 .aurora-blob {
@@ -1006,7 +1000,6 @@ h4, h5, h6 {
   filter: blur(90px);
   opacity: 0.5;
   animation: aurora-float 24s infinite alternate ease-in-out;
-  mix-blend-mode: screen;
 }
 
 .aurora-blob-1 {
@@ -1044,19 +1037,19 @@ h4, h5, h6 {
 
 /* Summer-specific blob overrides */
 [data-theme="summer"] .aurora-blob-1 {
-  background: radial-gradient(circle, #10B981, transparent 70%);
-  opacity: 0.45;
+  background: radial-gradient(circle, #D97706, transparent 70%);
+  opacity: 0.35;
 }
 [data-theme="summer"] .aurora-blob-2 {
   background: radial-gradient(circle, #F59E0B, transparent 70%);
-  opacity: 0.3;
+  opacity: 0.25;
 }
 [data-theme="summer"] .aurora-blob-3 {
-  background: radial-gradient(circle, #34D399, transparent 70%);
-  opacity: 0.22;
+  background: radial-gradient(circle, #FCD34D, transparent 70%);
+  opacity: 0.20;
 }
 [data-theme="summer"] .aurora-blob-4 {
-  background: radial-gradient(circle, #FCD34D, transparent 70%);
+  background: radial-gradient(circle, #FCA5A5, transparent 70%);
   opacity: 0.15;
 }
 

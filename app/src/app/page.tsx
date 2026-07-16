@@ -168,7 +168,7 @@ export default async function Home() {
       {/* Main Content */}
       <div
         className="container"
-        style={{ position: 'relative', zIndex: 1, paddingTop: '108px', paddingBottom: '96px' }}
+        style={{ position: 'relative', zIndex: 1, paddingTop: '80px', paddingBottom: '0px' }}
       >
         {/* ── Hero ── */}
         <div style={{ textAlign: 'center', marginBottom: '80px', animation: 'fadeIn 0.8s ease-out' }}>
@@ -180,9 +180,6 @@ export default async function Home() {
             {tripRange}
           </p>
 
-          <p style={{ fontSize: '15px', color: 'var(--text-muted)', maxWidth: '480px', margin: '0 auto' }}>
-            記錄旅途中的每一份感動
-          </p>
         </div>
 
         {/* ── Stats Grid ── */}

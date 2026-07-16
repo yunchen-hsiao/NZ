@@ -4,14 +4,12 @@ import { useEffect, useState } from 'react';
 import { useTheme } from './ThemeProvider';
 
 // Pre-seeded deterministic values (no Math.random on render — prevents hydration mismatch)
-const STAR_DATA = Array.from({ length: 22 }, (_, i) => ({
-  size: 1.5 + ((i * 1.13) % 3.5),
-  left: (i * 4.7 + 2) % 100,
-  top: (i * 7.3 + 5) % 90,
-  duration: 3.5 + (i * 0.61 % 4),
-  delay: -(i * 0.53 % 6),
-  // Cycle through 3 aurora colors
-  colorIdx: i % 3,
+const SNOWFLAKE_DATA = Array.from({ length: 25 }, (_, i) => ({
+  size: 10 + ((i * 1.7) % 12),
+  left: (i * 4.3 + 2) % 100,
+  delay: -(i * 0.73 % 10),
+  duration: 8 + (i * 0.81 % 6),
+  drift: (i % 2 === 0 ? 1 : -1) * (5 + (i * 1.3 % 15)),
 }));
 
 const FIREFLY_DATA = Array.from({ length: 18 }, (_, i) => ({
@@ -34,39 +32,37 @@ export default function Particles() {
 
   if (!mounted) return null;
 
-  // Aurora color palette for winter stars
-  const AURORA_COLORS = [
-    'var(--color-primary-light)',   // indigo
-    'var(--color-accent)',          // cyan
-    'var(--color-highlight)',       // lavender
-  ];
-
-  // Firefly colors for summer
+  // Warm floating dots for summer (no green)
   const FIREFLY_COLORS = [
-    '#FCD34D',  // warm gold
-    '#6EE7B7',  // mint green
+    '#FCD34D',  // yellow
+    '#F59E0B',  // amber
+    '#D97706',  // dark amber
   ];
 
   return (
-    <div className="particles-container" aria-hidden="true">
+    <div
+      className="particles-container"
+      aria-hidden="true"
+      style={{ position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none', overflow: 'hidden' }}
+    >
       {theme === 'winter' ? (
-        /* ── Winter: subtle twinkling aurora stars ── */
-        STAR_DATA.map((p, i) => (
+        /* ── Winter: Snowflakes ── */
+        SNOWFLAKE_DATA.map((p, i) => (
           <div
-            key={`star-${i}`}
+            key={`snow-${i}`}
             style={{
               position: 'absolute',
               left: `${p.left}vw`,
-              top: `${p.top}vh`,
-              width: `${p.size}px`,
-              height: `${p.size}px`,
-              borderRadius: '50%',
-              background: AURORA_COLORS[p.colorIdx],
-              opacity: 0,
-              boxShadow: `0 0 ${p.size * 2}px ${p.size}px ${AURORA_COLORS[p.colorIdx]}`,
-              animation: `starTwinkle ${p.duration}s ${p.delay}s ease-in-out infinite`,
-            }}
-          />
+              top: '-10vh',
+              fontSize: `${p.size}px`,
+              color: 'rgba(255, 255, 255, 0.8)',
+              textShadow: '0 0 8px rgba(255,255,255,0.4)',
+              animation: `snowDrop ${p.duration}s ${p.delay}s linear infinite`,
+              '--drift': `${p.drift}vw`,
+            } as React.CSSProperties}
+          >
+            ❄️
+          </div>
         ))
       ) : (
         /* ── Summer: floating firefly bokeh dots ── */
@@ -80,9 +76,9 @@ export default function Particles() {
               width: `${p.size}px`,
               height: `${p.size}px`,
               borderRadius: '50%',
-              background: FIREFLY_COLORS[p.colorIdx],
+              background: FIREFLY_COLORS[p.colorIdx % 3],
               opacity: 0,
-              boxShadow: `0 0 ${p.size * 3}px ${p.size * 1.5}px ${FIREFLY_COLORS[p.colorIdx]}40`,
+              boxShadow: `0 0 ${p.size * 3}px ${p.size * 1.5}px ${FIREFLY_COLORS[p.colorIdx % 3]}40`,
               animation: `fireflyFloat ${p.duration}s ${p.delay}s ease-in-out infinite`,
               '--drift': `${p.drift}vw`,
             } as React.CSSProperties}
@@ -91,9 +87,11 @@ export default function Particles() {
       )}
 
       <style>{`
-        @keyframes starTwinkle {
-          0%, 100% { opacity: 0; transform: scale(0.6); }
-          40%, 60% { opacity: 0.7; transform: scale(1); }
+        @keyframes snowDrop {
+          0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { transform: translate(var(--drift), 110vh) rotate(360deg); opacity: 0; }
         }
 
         @keyframes fireflyFloat {
