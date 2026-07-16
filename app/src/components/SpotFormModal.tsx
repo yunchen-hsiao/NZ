@@ -1,6 +1,9 @@
+'use client';
+
 import React, { useState } from 'react';
 import { uploadPhotosToCloudinary } from '../lib/cloudinary';
 import { createClient } from '../lib/supabase/client';
+
 
 interface SpotFormModalProps {
   isOpen: boolean;

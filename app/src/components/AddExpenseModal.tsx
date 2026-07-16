@@ -7,7 +7,6 @@ type AddExpenseModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  onSuccess: () => void;
   tripId: string | null;
   initialData?: any;
 };
