@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { uploadPhotosToCloudinary } from '../lib/cloudinary';
 import { createClient } from '../lib/supabase/client';
-
+import type { SpotType } from '../lib/types';
 
 interface SpotFormModalProps {
   isOpen: boolean;
@@ -27,7 +27,7 @@ export function SpotFormModal({ isOpen, onClose, lat, lng, onSuccess }: SpotForm
 
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
-    const type = formData.get('type') as string;
+    const type = formData.get('type') as SpotType;
     const date = formData.get('date') as string;
     const desc = formData.get('description') as string;
 
@@ -70,9 +70,9 @@ export function SpotFormModal({ isOpen, onClose, lat, lng, onSuccess }: SpotForm
 
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || '發生未知錯誤');
+      setError(err instanceof Error ? err.message : '發生未知錯誤');
     } finally {
       setLoading(false);
     }

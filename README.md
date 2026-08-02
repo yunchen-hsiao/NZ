@@ -21,12 +21,13 @@
 
 ## 🛠️ 技術棧 (Tech Stack)
 
-- **框架**: Next.js 15 (App Router)
+- **框架**: Next.js 16 (App Router)
 - **樣式**: Vanilla CSS (純 CSS 實作所有版面與極光玻璃特效，**無** Tailwind CSS)
 - **資料庫與驗證**: Supabase (@supabase/supabase-js, @supabase/ssr)
-- **圖片儲存**: Cloudinary
+- **圖片儲存**: Cloudinary（前端 unsigned upload 直傳 + `next/image` 讀取遠端圖片）
 - **地圖**: Leaflet.js (`react-leaflet`)
 - **圖表**: Recharts
+- **型別**: TypeScript，共用資料型別定義於 `app/src/lib/types.ts`（對應 Supabase 的 `trips`/`cities`/`spots`/`photos`/`expenses` 資料表）
 
 ## 🚀 快速開始 (Getting Started)
 
@@ -50,9 +51,16 @@ CLOUDINARY_API_SECRET=你的_API_Secret
 ```
 
 ### 3. 資料庫初始化 (Supabase)
-專案附帶了資料庫建立與匯入腳本：
-1. 請參考 `.agents/skills/` 或是過去生成的 `supabase_setup_guide.md` 來建立 Table Schema 與 Row Level Security (RLS)。
-2. 在 Supabase 的 SQL Editor 中執行 `data/seed_itinerary.sql` 與 `data/seed_expenses.sql` 以匯入預設的行程與記帳資料。
+> ⚠️ **注意**：目前 repo 中**沒有**現成的 Table Schema / RLS 建置 SQL 檔案，且 `data/` 目錄已被 `.gitignore` 排除、不在版本控制內。若你是全新 clone 這個專案，下方兩份 seed 檔案不會存在，需要自行建立 Schema 後手動整理資料（或向專案維護者索取）。詳細追蹤狀態請見 `implementation.md` 的 1.2 / 1.3 項目。
+
+1. 依照下列資料表結構在 Supabase 建立 Table 與 Row Level Security (RLS)（可參考 `data/implementation_plan1.md`、`data/implementation_plan2.md` 的設計文件，或現有程式碼中 `app/src/lib/types.ts` 定義的欄位）：
+   - `trips`（id, name, start_date, end_date）
+   - `cities`（id, trip_id, name, order, lat, lng）
+   - `spots`（id, city_id, type, name, visited_date, description, lat, lng）
+   - `photos`（id, spot_id, cloudinary_url, cloudinary_public_id, original_url, caption）
+   - `expenses`（id, trip_id, date, store_name, item_name, amount_nzd, category, note）
+   - RLS 政策：所有表格允許 `SELECT`（Public 可讀），`INSERT`/`UPDATE`/`DELETE` 僅限已登入的 Authenticated 使用者。
+2. 若你本機有 `data/seed_itinerary.sql` 與 `data/seed_expenses.sql`（非新 clone 情境），可在 Supabase 的 SQL Editor 中執行以匯入預設的行程與記帳資料。
 
 ### 4. 啟動開發伺服器
 ```bash
@@ -64,21 +72,34 @@ npm run dev
 
 ```
 nz-travel/
-├── app/                  # Next.js 15 主程式目錄
+├── app/                     # Next.js 16 主程式目錄
 │   ├── src/
-│   │   ├── app/          # App Router (首頁, /map, /gallery, /ledger)
-│   │   ├── components/   # 共用 UI 元件 (MapComponent, Navbar, Modals)
-│   │   └── lib/          # Supabase 封裝 (client.ts, server.ts)
-│   ├── public/           # 靜態資源與全域 CSS (globals.css)
+│   │   ├── app/             # App Router (首頁, /map, /gallery, /ledger)
+│   │   ├── components/      # 共用 UI 元件 (MapComponent, Navbar, Modals, ui/Sidebar)
+│   │   └── lib/             # Supabase 封裝 (supabase/client.ts, supabase/server.ts)、
+│   │                        # Cloudinary 上傳 (cloudinary.ts)、共用型別定義 (types.ts)
+│   ├── public/              # 靜態資源與全域 CSS (globals.css)
 │   └── package.json
-├── data/                 # 自動產生的 SQL Seed 檔案
-└── scripts/              # Markdown 解析腳本 (將筆記轉為 SQL)
+├── data/                    # SQL Seed 檔案（未納入版本控制，見上方注意事項）
+├── scripts/                 # Markdown 解析腳本 (將筆記轉為 SQL)
+├── implementation.md        # 專案問題盤點與修復計畫（含各項目狀態追蹤）
+└── progress.md              # 每次修改的變更紀錄
 ```
 
 ## 🔐 權限管理 (RLS)
 此專案嚴格遵守 Supabase 的 Row Level Security (RLS) 政策：
 - **訪客 (Public)**：可自由瀏覽首頁、地圖、記帳統計與相冊。
-- **管理員 (Authenticated)**：擁有新增、編輯與上傳照片的權限。
+- **管理員 (Authenticated)**：擁有新增、編輯與上傳照片的權限。地圖、相冊、記帳三個頁面的寫入操作按鈕（新增地點、上傳照片、新增/編輯支出）都只在偵測到登入 session 時才會顯示；未登入時完全隱藏，前後端行為一致。
+
+管理員登入帳號請透過 Supabase Auth 後台建立，網站右上角「管理員登入」按鈕使用 Email + 密碼登入。
+
+## 📌 已知限制 (Known Limitations)
+
+- **收據 OCR 掃描**（記帳頁）目前僅為 UI 示意動畫，尚未串接 `tesseract.js` 進行實際文字辨識。
+- **資料庫 Schema / RLS 建置腳本**尚未整理成可重現的 SQL 檔案，需依照上方「資料庫初始化」章節手動建立。
+- 詳細的問題盤點、修復狀態與後續待辦，請參考：
+  - [`implementation.md`](./implementation.md) — 問題清單與各項目的處理狀態
+  - [`progress.md`](./progress.md) — 逐次變更紀錄
 
 ---
 *Safe travels and enjoy your journey in New Zealand!* 🇳🇿🚗✨

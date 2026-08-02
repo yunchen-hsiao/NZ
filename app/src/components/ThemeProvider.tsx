@@ -14,10 +14,16 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('winter');
 
+  // `localStorage` is only available in the browser, so the saved theme
+  // can't be read during the server-rendered pass or as a lazy `useState`
+  // initializer without risking a hydration mismatch (SSR always has no
+  // saved value). Reading it once after mount and syncing state here is the
+  // same category of "browser-only API access" effect the eslint rule
+  // itself allows for ref-based DOM measurement.
   useEffect(() => {
-    // Check local storage or system preference on mount
     const savedTheme = localStorage.getItem('nz-theme') as Theme | null;
     if (savedTheme) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(savedTheme);
       if (savedTheme === 'summer') {
         document.body.setAttribute('data-theme', 'summer');

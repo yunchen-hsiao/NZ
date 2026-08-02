@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import Image from 'next/image';
+import type { Session } from '@supabase/supabase-js';
 import { Sidebar } from './ui/Sidebar';
 import { SpotFormModal } from './SpotFormModal';
 import { createClient } from '../lib/supabase/client';
+import type { Spot, Photo, SpotType } from '../lib/types';
 
 // New Zealand bounds to prevent dragging away
 const NZ_BOUNDS: L.LatLngBoundsLiteral = [
@@ -32,7 +35,7 @@ const createCustomIcon = (emoji: string, colorClass: string) => {
   });
 };
 
-const ICONS = {
+const ICONS: Record<SpotType, L.DivIcon> = {
   accommodation: createCustomIcon('🏠', 'accommodation'),
   attraction: createCustomIcon('📍', 'attraction'),
   restaurant: createCustomIcon('🍽️', 'restaurant'),
@@ -42,14 +45,14 @@ const ICONS = {
 export default function MapComponent() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  const markersRef = useRef<(L.Marker | L.Polyline)[]>([]);
 
   // State
-  const [session, setSession] = useState<any>(null);
-  const [spots, setSpots] = useState<any[]>([]);
-  const [photos, setPhotos] = useState<any[]>([]);
-  const [selectedSpot, setSelectedSpot] = useState<any>(null);
-  
+  const [session, setSession] = useState<Session | null>(null);
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
+
   // Form Modal State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [clickCoords, setClickCoords] = useState<{lat: number, lng: number} | null>(null);
@@ -62,27 +65,29 @@ export default function MapComponent() {
     other: true,
   });
 
-  const supabase = createClient();
-
   // Load Data and Session
-  const loadData = async () => {
-    // Session
-    const { data: { session } } = await supabase.auth.getSession();
-    setSession(session);
+  const loadData = useCallback(() => {
+    const supabase = createClient();
 
-    // Fetch Spots and Photos
-    const [spotsRes, photosRes] = await Promise.all([
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    Promise.all([
       supabase.from('spots').select('*'),
-      supabase.from('photos').select('*')
-    ]);
-    
-    if (spotsRes.data) setSpots(spotsRes.data);
-    if (photosRes.data) setPhotos(photosRes.data);
-  };
+      supabase.from('photos').select('*'),
+    ]).then(([spotsRes, photosRes]) => {
+      if (spotsRes.data) setSpots(spotsRes.data);
+      if (photosRes.data) setPhotos(photosRes.data);
+    });
+  }, []);
 
+  // Data fetching on mount (loadData only sets state inside deferred
+  // `.then()` callbacks, not synchronously, so this doesn't trip
+  // react-hooks/set-state-in-effect).
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   // Initialize Map
   useEffect(() => {
@@ -107,6 +112,7 @@ export default function MapComponent() {
 
     // Map Click to Add Spot (only if logged in)
     map.on('click', async (e) => {
+      const supabase = createClient();
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (currentSession) {
         setClickCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
@@ -134,10 +140,10 @@ export default function MapComponent() {
     markersRef.current = [];
 
     spots.forEach(spot => {
-      if (!activeFilters[spot.type as keyof typeof activeFilters]) return;
+      if (!activeFilters[spot.type]) return;
 
       const marker = L.marker([spot.lat, spot.lng], {
-        icon: ICONS[spot.type as keyof typeof ICONS]
+        icon: ICONS[spot.type]
       }).addTo(map);
 
       marker.on('click', () => {
@@ -151,7 +157,7 @@ export default function MapComponent() {
     // Simple Route drawing logic: connect all visible spots by date
     // (A real app would sort by trip and date, here we just sort all by date for simplicity)
     const sortedSpots = [...spots]
-      .filter(s => activeFilters[s.type as keyof typeof activeFilters])
+      .filter(s => activeFilters[s.type])
       .sort((a, b) => new Date(a.visited_date).getTime() - new Date(b.visited_date).getTime());
     
     const polylineLayer = L.polyline(sortedSpots.map(s => [s.lat, s.lng] as [number, number]), { 
@@ -161,7 +167,7 @@ export default function MapComponent() {
     });
     
     polylineLayer.addTo(map);
-    markersRef.current.push(polylineLayer as any); // Track to remove later
+    markersRef.current.push(polylineLayer); // Track to remove later
 
   }, [spots, activeFilters]);
 
@@ -239,7 +245,13 @@ export default function MapComponent() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   {selectedSpotPhotos.map(photo => (
                     <div key={photo.id} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden' }}>
-                      <img src={photo.cloudinary_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <Image
+                        src={photo.cloudinary_url}
+                        alt=""
+                        fill
+                        sizes="200px"
+                        style={{ objectFit: 'cover' }}
+                      />
                     </div>
                   ))}
                 </div>

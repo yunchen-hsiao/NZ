@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend
 } from 'recharts';
+import type { Session } from '@supabase/supabase-js';
 import { createClient } from '../../lib/supabase/client';
 import AddExpenseModal from '../../components/AddExpenseModal';
+import type { Expense, ExpenseCategory } from '../../lib/types';
 
-const CATEGORY_COLORS = {
+const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   food: '#86EFAC',
   transport: '#FCA5A5',
   accommodation: '#A5B4FC',
@@ -17,7 +19,7 @@ const CATEGORY_COLORS = {
   other: '#94A3B8',
 };
 
-const CATEGORY_LABELS = {
+const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   food: '飲食',
   transport: '交通',
   accommodation: '住宿',
@@ -28,39 +30,73 @@ const CATEGORY_LABELS = {
 };
 
 export default function LedgerPage() {
-  const [expenses, setExpenses] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [exchangeRateStr, setExchangeRateStr] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<any>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [tripId, setTripId] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  // Bumped every time the add/edit modal is opened so it fully remounts with
+  // fresh initial state instead of relying on a reset-effect inside it.
+  const [modalKey, setModalKey] = useState(0);
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(() => {
     const supabase = createClient();
-
-    let currentTripId = tripId;
-    if (!currentTripId) {
-      const { data: tripData } = await supabase.from('trips').select('id').limit(1).single();
-      if (tripData) {
-        currentTripId = tripData.id;
-        setTripId(tripData.id);
-      }
-    }
-
-    const { data, error } = await supabase
+    return supabase
       .from('expenses')
       .select('*')
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .then(({ data, error }) => {
+        if (data) setExpenses(data);
+        if (error) console.error('Error fetching expenses:', error);
+        setLoading(false);
+      });
+  }, []);
 
-    if (data) setExpenses(data);
-    if (error) console.error('Error fetching expenses:', error);
-    setLoading(false);
-  };
+  // Fetch the trip id once on mount (needed when inserting new expenses).
+  // Written as an inline `.then()` chain (same style as Navbar's session
+  // check) so the state update happens inside a deferred callback rather
+  // than synchronously in the effect body.
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.from('trips').select('id').limit(1).single().then(({ data }) => {
+      if (data) setTripId(data.id);
+    });
+  }, []);
 
+  // Check admin session so write actions (新增/編輯) are only shown to
+  // logged-in users, matching the pattern already used on /gallery and /map.
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Data fetching on mount (fetchExpenses only sets state inside its
+  // deferred `.then()` callback, not synchronously, so this doesn't trip
+  // react-hooks/set-state-in-effect).
   useEffect(() => {
     fetchExpenses();
-  }, []);
+  }, [fetchExpenses]);
+
+  const openAddModal = () => {
+    setEditingExpense(null);
+    setModalKey((k) => k + 1);
+    setIsAddModalOpen(true);
+  };
+
+  const openEditModal = (exp: Expense) => {
+    setEditingExpense(exp);
+    setModalKey((k) => k + 1);
+    setIsAddModalOpen(true);
+  };
 
   const handleAddSuccess = () => {
     setIsAddModalOpen(false);
@@ -86,18 +122,16 @@ export default function LedgerPage() {
     if (!acc[curr.date][curr.store_name]) acc[curr.date][curr.store_name] = [];
     acc[curr.date][curr.store_name].push(curr);
     return acc;
-  }, {} as Record<string, Record<string, typeof expenses>>);
+  }, {} as Record<string, Record<string, Expense[]>>);
 
   // Chart Data
-  const chartData = (
-    Object.entries(
-      expenses.reduce((acc, curr) => {
-        acc[curr.category] = (acc[curr.category] || 0) + curr.amount_nzd;
-        return acc;
-      }, {} as Record<string, number>)
-    ) as [string, number][]
+  const chartData = Object.entries(
+    expenses.reduce((acc, curr) => {
+      acc[curr.category] = (acc[curr.category] || 0) + curr.amount_nzd;
+      return acc;
+    }, {} as Record<ExpenseCategory, number>)
   ).map(([name, value]) => ({
-    name: CATEGORY_LABELS[name as keyof typeof CATEGORY_LABELS] || name,
+    name: CATEGORY_LABELS[name as ExpenseCategory] || name,
     value: isConverted ? value * exchangeRate : value,
     key: name,
   }));
@@ -134,27 +168,6 @@ export default function LedgerPage() {
         }}
       >
         <div>
-          {/* Badge */}
-          <div style={{ marginBottom: '12px' }}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                border: '1px solid var(--border-strong)',
-                background: 'var(--bg-surface)',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--color-accent)',
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-              }}
-            >
-              ✦ 旅途記帳
-            </span>
-          </div>
           <h1 style={{ fontSize: '32px', marginBottom: '6px', letterSpacing: '-0.02em' }}>
             記帳與分析
           </h1>
@@ -289,12 +302,14 @@ export default function LedgerPage() {
         <div className="aurora-glass card" style={{ padding: '28px', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ fontSize: '18px', margin: 0 }}>新增記帳</h3>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => { setEditingExpense(null); setIsAddModalOpen(true); }}
-            >
-              手動新增
-            </button>
+            {session && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={openAddModal}
+              >
+                手動新增
+              </button>
+            )}
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px', lineHeight: 1.6 }}>
             上傳超市或餐廳的收據照片，AI 將自動辨識日期、店家與金額，幫你快速記帳。
@@ -367,12 +382,14 @@ export default function LedgerPage() {
       <div style={{ marginBottom: '32px' }}>
         <div className="section-header">
           <h3 className="section-title">明細清單</h3>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => { setEditingExpense(null); setIsAddModalOpen(true); }}
-          >
-            + 新增
-          </button>
+          {session && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={openAddModal}
+            >
+              + 新增
+            </button>
+          )}
         </div>
       </div>
 
@@ -418,7 +435,7 @@ export default function LedgerPage() {
                   {currencySymbol}{formatAmount(
                     Object.values(groupedExpenses[date])
                       .flat()
-                      .reduce((s: number, e: any) => s + e.amount_nzd, 0)
+                      .reduce((s: number, e: Expense) => s + e.amount_nzd, 0)
                   )}
                 </span>
               </div>
@@ -450,7 +467,7 @@ export default function LedgerPage() {
 
                     {/* Line items */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {groupedExpenses[date][shop].map((exp: any) => (
+                      {groupedExpenses[date][shop].map((exp: Expense) => (
                         <div
                           key={exp.id}
                           style={{
@@ -463,7 +480,7 @@ export default function LedgerPage() {
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <span className={`badge badge-${exp.category}`}>
-                              {CATEGORY_LABELS[exp.category as keyof typeof CATEGORY_LABELS] || exp.category}
+                              {CATEGORY_LABELS[exp.category] || exp.category}
                             </span>
                             <div>
                               <span style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: 500 }}>
@@ -495,13 +512,15 @@ export default function LedgerPage() {
                             >
                               {currencySymbol}{formatAmount(exp.amount_nzd)}
                             </div>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              style={{ padding: '4px 10px', fontSize: '12px' }}
-                              onClick={() => { setEditingExpense(exp); setIsAddModalOpen(true); }}
-                            >
-                              編輯
-                            </button>
+                            {session && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: '4px 10px', fontSize: '12px' }}
+                                onClick={() => openEditModal(exp)}
+                              >
+                                編輯
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -520,7 +539,7 @@ export default function LedgerPage() {
                       店家小計：
                       <span style={{ fontWeight: 700, color: 'var(--color-primary-light)', marginLeft: '4px' }}>
                         {currencySymbol}{formatAmount(
-                          groupedExpenses[date][shop].reduce((sum: number, e: any) => sum + e.amount_nzd, 0)
+                          groupedExpenses[date][shop].reduce((sum: number, e: Expense) => sum + e.amount_nzd, 0)
                         )}
                       </span>
                     </div>
@@ -557,6 +576,7 @@ export default function LedgerPage() {
       </div>
 
       <AddExpenseModal
+        key={modalKey}
         isOpen={isAddModalOpen}
         onClose={() => { setIsAddModalOpen(false); setEditingExpense(null); }}
         onSuccess={handleAddSuccess}

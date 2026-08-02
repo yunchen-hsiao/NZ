@@ -1,42 +1,55 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
+import type { Session } from '@supabase/supabase-js';
 import { createClient } from '../../lib/supabase/client';
 import UploadPhotoModal from '../../components/UploadPhotoModal';
+import type { Photo } from '../../lib/types';
 
 export default function GalleryPage() {
-  const [selectedPhoto, setSelectedPhoto] = useState<any | null>(null);
-  const [photos, setPhotos] = useState<any[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   // Filter state
   const [filterSpotId, setFilterSpotId] = useState<string>('all');
 
-  const fetchPhotos = async () => {
+  const fetchPhotos = useCallback(() => {
     setLoading(true);
     const supabase = createClient();
-    const { data, error } = await supabase
+    return supabase
       .from('photos')
       .select('*, spots(id, name, visited_date)')
-      .order('created_at', { ascending: false });
-
-    if (data) setPhotos(data);
-    if (error) console.error('Error fetching photos:', error);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    const init = async () => {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      fetchPhotos();
-    };
-    init();
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (data) setPhotos(data);
+        if (error) console.error('Error fetching photos:', error);
+        setLoading(false);
+      });
   }, []);
+
+  // Check admin session so the upload button only shows to logged-in users.
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Data fetching on mount is an explicitly documented valid use of effects
+  // (see https://react.dev/reference/eslint-plugin-react-hooks/lints/set-state-in-effect).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPhotos();
+  }, [fetchPhotos]);
 
   const handleUploadSuccess = () => {
     setIsUploadModalOpen(false);
@@ -45,11 +58,12 @@ export default function GalleryPage() {
 
   // Get unique spots from photos for the filter dropdown
   const uniqueSpots = Array.from(new Set(photos.map(p => p.spots?.id)))
-    .filter(Boolean)
+    .filter((id): id is string => Boolean(id))
     .map(id => {
       const photo = photos.find(p => p.spots?.id === id);
       return photo?.spots;
-    });
+    })
+    .filter((spot): spot is NonNullable<typeof spot> => Boolean(spot));
 
   const filteredPhotos = filterSpotId === 'all'
     ? photos
@@ -71,28 +85,6 @@ export default function GalleryPage() {
           textAlign: 'center',
         }}
       >
-        {/* Badge */}
-        <div style={{ marginBottom: '14px' }}>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 14px',
-              borderRadius: '9999px',
-              border: '1px solid var(--border-strong)',
-              background: 'var(--bg-surface)',
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--color-highlight)',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            ✦ 旅途記憶
-          </span>
-        </div>
 
         <h1
           style={{
@@ -219,6 +211,15 @@ export default function GalleryPage() {
               className="photo-card"
               onClick={() => setSelectedPhoto(photo)}
             >
+              {/*
+                Masonry layout relies on each photo's natural (and varying)
+                aspect ratio to produce the staggered grid effect, and the
+                `photos` table doesn't store width/height. `next/image`
+                requires either a fixed width+height or a `fill` parent with
+                a known aspect ratio, either of which would force-crop these
+                photos and break the masonry look. Deliberately kept as a
+                plain <img>; see implementation.md ("next/image" section).
+              */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={photo.cloudinary_url}
@@ -247,11 +248,14 @@ export default function GalleryPage() {
             ✕
           </button>
 
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={selectedPhoto.original_url || selectedPhoto.cloudinary_url}
             alt={selectedPhoto.caption || '旅行照片'}
             className="lightbox-img"
+            width={1600}
+            height={1200}
+            sizes="90vw"
+            style={{ width: 'auto', height: 'auto' }}
             onClick={(e) => e.stopPropagation()}
           />
 
@@ -277,11 +281,12 @@ export default function GalleryPage() {
         </div>
       )}
 
-      <UploadPhotoModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onSuccess={handleUploadSuccess}
-      />
+      {isUploadModalOpen && (
+        <UploadPhotoModal
+          onClose={() => setIsUploadModalOpen(false)}
+          onSuccess={handleUploadSuccess}
+        />
+      )}
     </div>
   );
 }

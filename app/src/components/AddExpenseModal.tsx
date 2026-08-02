@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createClient } from '../lib/supabase/client';
+import type { Expense, ExpenseCategory } from '../lib/types';
 
 type AddExpenseModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   tripId: string | null;
-  initialData?: any;
+  initialData?: Expense | null;
 };
 
-const CATEGORIES = [
+const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'food', label: '飲食' },
   { value: 'transport', label: '交通' },
   { value: 'accommodation', label: '住宿' },
@@ -22,35 +23,18 @@ const CATEGORIES = [
 ];
 
 export default function AddExpenseModal({ isOpen, onClose, onSuccess, tripId, initialData }: AddExpenseModalProps) {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [storeName, setStoreName] = useState('');
-  const [itemName, setItemName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('food');
-  const [note, setNote] = useState('');
+  // The parent (ledger page) remounts this component with a fresh `key`
+  // whenever it's opened for a new entry or a different expense, so the
+  // initial state below can be derived directly from props during the
+  // initial render instead of being synced via a `useEffect`.
+  const [date, setDate] = useState(initialData?.date ?? new Date().toISOString().split('T')[0]);
+  const [storeName, setStoreName] = useState(initialData?.store_name ?? '');
+  const [itemName, setItemName] = useState(initialData?.item_name ?? '');
+  const [amount, setAmount] = useState(initialData?.amount_nzd.toString() ?? '');
+  const [category, setCategory] = useState<ExpenseCategory>(initialData?.category ?? 'food');
+  const [note, setNote] = useState<string>(initialData?.note ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (isOpen) {
-      if (initialData) {
-        setDate(initialData.date);
-        setStoreName(initialData.store_name);
-        setItemName(initialData.item_name);
-        setAmount(initialData.amount_nzd.toString());
-        setCategory(initialData.category);
-        setNote(initialData.note || '');
-      } else {
-        setDate(new Date().toISOString().split('T')[0]);
-        setStoreName('');
-        setItemName('');
-        setAmount('');
-        setCategory('food');
-        setNote('');
-      }
-      setError('');
-    }
-  }, [isOpen, initialData]);
 
   if (!isOpen) return null;
 
@@ -147,7 +131,7 @@ export default function AddExpenseModal({ isOpen, onClose, onSuccess, tripId, in
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ fontSize: '14px', fontWeight: 600 }}>分類 *</label>
-              <select className="form-input" value={category} onChange={e => setCategory(e.target.value)} required>
+              <select className="form-input" value={category} onChange={e => setCategory(e.target.value as ExpenseCategory)} required>
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>

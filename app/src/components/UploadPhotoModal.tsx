@@ -2,47 +2,43 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '../lib/supabase/client';
+import type { Spot } from '../lib/types';
 
 type UploadPhotoModalProps = {
-  isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 };
 
-export default function UploadPhotoModal({ isOpen, onClose, onSuccess }: UploadPhotoModalProps) {
+type SpotOption = Pick<Spot, 'id' | 'name' | 'visited_date'>;
+
+// The parent (gallery page) only mounts this component while the upload
+// modal is open, so form state naturally starts fresh on every mount
+// without needing a reset-effect keyed on an `isOpen` prop.
+export default function UploadPhotoModal({ onClose, onSuccess }: UploadPhotoModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [spots, setSpots] = useState<any[]>([]);
+  const [spots, setSpots] = useState<SpotOption[]>([]);
   const [spotId, setSpotId] = useState<string>('');
   const [caption, setCaption] = useState('');
-  
+
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
 
-  // Fetch spots for dropdown
+  // Fetch spots for the dropdown once on mount.
   useEffect(() => {
-    if (isOpen) {
-      const fetchSpots = async () => {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from('spots')
-          .select('id, name, visited_date')
-          .order('visited_date', { ascending: false });
-        
+    const supabase = createClient();
+    supabase
+      .from('spots')
+      .select('id, name, visited_date')
+      .order('visited_date', { ascending: false })
+      .then(({ data, error }) => {
         if (data) {
           setSpots(data);
           if (data.length > 0) setSpotId(data[0].id);
         }
-      };
-      fetchSpots();
-      
-      // Reset form
-      setFile(null);
-      setPreviewUrl(null);
-      setCaption('');
-      setError('');
-    }
-  }, [isOpen]);
+        if (error) console.error('Error fetching spots:', error);
+      });
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -97,14 +93,12 @@ export default function UploadPhotoModal({ isOpen, onClose, onSuccess }: UploadP
       // Success
       setIsUploading(false);
       onSuccess();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Upload Error:', err);
-      setError(err.message || '發生錯誤，請稍後再試。');
+      setError(err instanceof Error ? err.message : '發生錯誤，請稍後再試。');
       setIsUploading(false);
     }
   };
-
-  if (!isOpen) return null;
 
   return (
     <div style={{

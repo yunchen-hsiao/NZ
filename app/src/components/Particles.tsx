@@ -26,7 +26,12 @@ export default function Particles() {
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
+  // This is the standard "mounted" gate used to intentionally render
+  // nothing during SSR/hydration and only show particles once running in
+  // the browser, avoiding a hydration mismatch. There's no prop/state to
+  // derive this from during render — it must happen after mount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
