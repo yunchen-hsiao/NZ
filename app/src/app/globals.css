@@ -541,7 +541,7 @@ h4, h5, h6 {
 
 /* Expense category badges */
 .badge-food         { background: rgba(34, 197, 94, 0.1);  color: #86EFAC; border-color: rgba(34,197,94,0.2); }
-.badge-clothing     { background: rgba(168, 85, 247, 0.1); color: #C4B5FD; border-color: rgba(168,85,247,0.2); }
+.badge-shopping     { background: rgba(168, 85, 247, 0.1); color: #C4B5FD; border-color: rgba(168,85,247,0.2); }
 .badge-transport    { background: rgba(251, 146, 60, 0.1); color: #FCA5A5; border-color: rgba(251,146,60,0.2); }
 .badge-accommodation-exp { background: rgba(129, 140, 248, 0.1); color: #A5B4FC; border-color: rgba(129,140,248,0.2); }
 .badge-learning     { background: rgba(6, 182, 212, 0.1);  color: #67E8F9; border-color: rgba(6,182,212,0.2); }

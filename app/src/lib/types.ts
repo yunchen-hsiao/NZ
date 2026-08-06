@@ -9,7 +9,7 @@ export type ExpenseCategory =
   | 'accommodation'
   | 'learning'
   | 'leisure'
-  | 'clothing'
+  | 'shopping'
   | 'other';
 
 export interface Trip {
@@ -58,7 +58,23 @@ export interface Expense {
   date: string;
   store_name: string;
   item_name: string;
-  amount_nzd: number;
+  // 至少會有一個不是 null（由資料庫的 CHECK constraint 保證，
+  // 見 data/migration_currency_and_rates.sql）。
+  // - 只填 amount_nzd：代表這筆錢是用紐幣支付、沒有換算成台幣的紀錄。
+  // - 只填 amount_twd：代表這筆是用台幣支付（例如台灣先刷卡的機票、裝備）。
+  // - 兩者都填：代表這筆紐幣消費有實際換算/刷卡的台幣金額紀錄，
+  //   計算總額時會優先採用這個「真實台幣金額」而不是用匯率換算。
+  amount_nzd: number | null;
+  amount_twd: number | null;
   category: ExpenseCategory;
   note: string | null;
+}
+
+// 每日 NZD -> TWD 歷史匯率，對應 `exchange_rates` 資料表。
+// 由 scripts/fetch_exchange_rates.mjs 產生 seed SQL 匯入，
+// 用於把只記錄紐幣金額的支出換算成台幣總計。
+export interface ExchangeRate {
+  date: string;
+  nzd_to_twd: number;
+  source?: string | null;
 }

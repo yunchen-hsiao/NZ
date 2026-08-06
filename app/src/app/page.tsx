@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '../lib/supabase/server';
+import { formatSplitTotal, splitTotal } from '../lib/money';
 
 // ── SVG Icon Components ──────────────────────────
 function IconCalendar() {
@@ -105,16 +106,16 @@ export default async function Home() {
     .from('spots')
     .select('*', { count: 'exact', head: true });
 
-  // 4. Total expenses
-  const { data: expenses } = await supabase.from('expenses').select('amount_nzd');
-  const totalExpense = expenses ? expenses.reduce((sum, e) => sum + e.amount_nzd, 0) : 0;
-  const formattedExpense = `$${Math.round(totalExpense).toLocaleString()}`;
+  // 4. Total expenses — 有台幣紀錄就算台幣，只有紐幣就算紐幣，兩者都可能同時出現
+  //    （例如 "NZ$1,234.56 + NT$56,000"），跟 /ledger 頁面的計算規則一致。
+  const { data: expenses } = await supabase.from('expenses').select('date, amount_nzd, amount_twd');
+  const formattedExpense = expenses ? formatSplitTotal(splitTotal(expenses)) : 'NZ$0.00';
 
   const stats = [
-    { value: days,             label: '旅行天數', sub: 'Days',   icon: <IconCalendar /> },
-    { value: citiesCount || 0, label: '走訪城市', sub: 'Cities', icon: <IconCity /> },
-    { value: spotsCount || 0,  label: '打卡景點', sub: 'Spots',  icon: <IconMapPin /> },
-    { value: formattedExpense, label: '總花費',   sub: 'NZD',    icon: <IconWallet /> },
+    { value: days,             label: '旅行天數', sub: 'Days',    icon: <IconCalendar /> },
+    { value: citiesCount || 0, label: '走訪城市', sub: 'Cities',  icon: <IconCity /> },
+    { value: spotsCount || 0,  label: '打卡景點', sub: 'Spots',   icon: <IconMapPin /> },
+    { value: formattedExpense, label: '總花費',   sub: 'NZD+TWD', icon: <IconWallet /> },
   ];
 
   const navCards = [

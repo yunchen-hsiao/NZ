@@ -18,7 +18,7 @@ const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'accommodation', label: '住宿' },
   { value: 'learning', label: '學習/體驗' },
   { value: 'leisure', label: '娛樂' },
-  { value: 'clothing', label: '購物' },
+  { value: 'shopping', label: '購物' },
   { value: 'other', label: '其他' }
 ];
 
@@ -30,7 +30,8 @@ export default function AddExpenseModal({ isOpen, onClose, onSuccess, tripId, in
   const [date, setDate] = useState(initialData?.date ?? new Date().toISOString().split('T')[0]);
   const [storeName, setStoreName] = useState(initialData?.store_name ?? '');
   const [itemName, setItemName] = useState(initialData?.item_name ?? '');
-  const [amount, setAmount] = useState(initialData?.amount_nzd.toString() ?? '');
+  const [amountNzd, setAmountNzd] = useState(initialData?.amount_nzd?.toString() ?? '');
+  const [amountTwd, setAmountTwd] = useState(initialData?.amount_twd?.toString() ?? '');
   const [category, setCategory] = useState<ExpenseCategory>(initialData?.category ?? 'food');
   const [note, setNote] = useState<string>(initialData?.note ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,8 +45,12 @@ export default function AddExpenseModal({ isOpen, onClose, onSuccess, tripId, in
       setError('找不到旅次資料，請稍後再試。');
       return;
     }
-    if (!date || !storeName || !itemName || !amount) {
+    if (!date || !storeName || !itemName) {
       setError('請填寫所有必填欄位。');
+      return;
+    }
+    if (!amountNzd && !amountTwd) {
+      setError('紐幣金額與台幣金額至少要填一個。');
       return;
     }
 
@@ -55,26 +60,21 @@ export default function AddExpenseModal({ isOpen, onClose, onSuccess, tripId, in
     const supabase = createClient();
     let saveError = null;
 
+    const payload = {
+      date,
+      store_name: storeName,
+      item_name: itemName,
+      amount_nzd: amountNzd ? parseFloat(amountNzd) : null,
+      amount_twd: amountTwd ? parseFloat(amountTwd) : null,
+      category,
+      note
+    };
+
     if (initialData) {
-      const { error } = await supabase.from('expenses').update({
-        date,
-        store_name: storeName,
-        item_name: itemName,
-        amount_nzd: parseFloat(amount),
-        category,
-        note
-      }).eq('id', initialData.id);
+      const { error } = await supabase.from('expenses').update(payload).eq('id', initialData.id);
       saveError = error;
     } else {
-      const { error } = await supabase.from('expenses').insert({
-        trip_id: tripId,
-        date,
-        store_name: storeName,
-        item_name: itemName,
-        amount_nzd: parseFloat(amount),
-        category,
-        note
-      });
+      const { error } = await supabase.from('expenses').insert({ trip_id: tripId, ...payload });
       saveError = error;
     }
 
@@ -128,19 +128,27 @@ export default function AddExpenseModal({ isOpen, onClose, onSuccess, tripId, in
             <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} required />
           </div>
 
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 600 }}>分類 *</label>
+            <select className="form-input" value={category} onChange={e => setCategory(e.target.value as ExpenseCategory)} required>
+              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '14px', fontWeight: 600 }}>分類 *</label>
-              <select className="form-input" value={category} onChange={e => setCategory(e.target.value as ExpenseCategory)} required>
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+              <label style={{ fontSize: '14px', fontWeight: 600 }}>紐幣金額 (NZD)</label>
+              <input type="number" step="0.01" min="0" className="form-input" placeholder="0.00" value={amountNzd} onChange={e => setAmountNzd(e.target.value)} />
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '14px', fontWeight: 600 }}>金額 (NZD) *</label>
-              <input type="number" step="0.01" min="0" className="form-input" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required />
+              <label style={{ fontSize: '14px', fontWeight: 600 }}>台幣金額 (TWD)</label>
+              <input type="number" step="1" min="0" className="form-input" placeholder="0" value={amountTwd} onChange={e => setAmountTwd(e.target.value)} />
             </div>
           </div>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '-8px' }}>
+            兩者至少填一個。若這筆有實際刷卡/收據上的台幣金額，建議兩個都填，計算總花費時會直接採用台幣金額。
+          </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <label style={{ fontSize: '14px', fontWeight: 600 }}>店家名稱 *</label>

@@ -86,3 +86,176 @@ npm run build  → Compiled successfully, TypeScript 檢查通過，7 個路由�
 |---|---|
 | 修改 | `README.md` |
 | 新增 | `progress.md` |
+
+---
+
+## 2026-08-02 — 雙幣別記帳 + 每日歷史匯率 + CSV 批次匯入
+
+### 背景
+使用者要求：(1) 記帳金額改成有台幣就算台幣、只有紐幣才算紐幣，個別項目兩種幣別都顯示，總金額預設拆分顯示、可切換成全部換算台幣；(2) 自動抓取旅程期間每日 NZD→TWD 歷史匯率，取代原本手動輸入單一匯率；(3) 開銷資料改用 CSV 批次匯入。
+
+### 變更摘要
+
+**資料庫 schema（尚待使用者在 Supabase SQL Editor 執行）**
+- 新增 `data/migration_currency_and_rates.sql`：
+  - `expenses` 新增 `amount_twd numeric(10,2)`（可為 null），`amount_nzd` 改為可 null，加上 CHECK constraint 保證兩者至少一個非 null。
+  - 新增 `exchange_rates(date PK, nzd_to_twd, source, created_at)` 表，RLS 設定為公開可讀、登入者可寫。
+
+**歷史匯率抓取**
+- 新增 `scripts/fetch_exchange_rates.mjs`：串接免費的 [fawazahmed0/currency-api](https://github.com/fawazahmed0/exchange-api)（無需 API Key），抓取指定日期範圍的每日 NZD→TWD 匯率，輸出 `data/seed_exchange_rates.sql` 與 `data/exchange_rates.json`。
+- 已實際執行，抓到 2026-06-26 ~ 2026-07-28（本次旅程日期）共 33 天的匯率，範圍 17.97 ~ 18.98。
+
+**CSV 批次匯入**
+- 新增 `scripts/import_expenses_csv.mjs`：讀取 `data/expenses.csv`（欄位：`date, store_name, item_name, amount_nzd, amount_twd, category, note`），驗證格式後產生 `data/seed_expenses_from_csv.sql`。
+- 新增 `data/expenses_template.csv` 作為欄位格式範例。
+- 已用範例 CSV 測試腳本可正常解析並產生正確的 SQL（含中文欄位、NULL 金額、必填欄位缺漏時的錯誤訊息）。
+
+**前端計算與顯示邏輯**
+- 新增 `app/src/lib/money.ts`：統一定義 `splitTotal`（拆分小計）、`sumAsTwd`/`convertExpenseToTwd`（換算單一台幣總額，只有紐幣的項目查當天歷史匯率概算並標記「≈」）、`formatExpenseAmount`/`formatSplitTotal`/`formatTWD`/`formatNZD` 等格式化函式。
+- `app/src/lib/types.ts`：`Expense` 新增 `amount_twd: number | null`，`amount_nzd` 改為 `number | null`；新增 `ExchangeRate` 型別。
+- `app/src/app/ledger/page.tsx`：
+  - 移除原本的「自訂匯率」文字輸入框，改成「全部顯示為台幣」勾選開關（歷史匯率載入完成前停用並顯示提示）。
+  - 總花費、日期小計、店家小計、單筆金額全部改用 `money.ts` 的邏輯計算與顯示。
+  - 圓餅圖的分類佔比一律換算成台幣顯示（避免混合幣別無法直接加總比較）。
+  - 新增 `exchange_rates` 的抓取 effect。
+- `app/src/app/page.tsx`：首頁「總花費」統計卡改用拆分顯示（`NZ$xx + NT$xx`），改抓 `date, amount_nzd, amount_twd` 三個欄位。
+- `app/src/components/AddExpenseModal.tsx`：原本單一「金額 (NZD)」欄位拆成「紐幣金額」「台幣金額」兩個欄位（至少填一個），並附上說明文字。
+
+### 驗證結果
+```
+npm run lint   → 0 errors, 0 warnings
+npm run build  → Compiled successfully, TypeScript 檢查通過
+node scripts/fetch_exchange_rates.mjs → 成功抓取 33 天匯率並寫入 SQL/JSON
+node scripts/import_expenses_csv.mjs data/expenses_template.csv → 成功解析 4 筆範例資料（測試後已刪除產生的暫存 SQL）
+```
+
+### 修改的檔案
+| 類型 | 檔案 |
+|---|---|
+| 新增 | `data/migration_currency_and_rates.sql` |
+| 新增 | `scripts/fetch_exchange_rates.mjs` |
+| 新增 | `data/seed_exchange_rates.sql`（已執行產生） |
+| 新增 | `data/exchange_rates.json`（已執行產生） |
+| 新增 | `scripts/import_expenses_csv.mjs` |
+| 新增 | `data/expenses_template.csv` |
+| 新增 | `app/src/lib/money.ts` |
+| 修改 | `app/src/lib/types.ts` |
+| 修改 | `app/src/app/ledger/page.tsx` |
+| 修改 | `app/src/app/page.tsx` |
+| 修改 | `app/src/components/AddExpenseModal.tsx` |
+
+### 未處理項目（需使用者操作）
+- 尚未對 Supabase 執行 `migration_currency_and_rates.sql`（僅有 anon key，需使用者自行在 SQL Editor 跑一次）。
+- 舊的 `data/開銷.md` + `scripts/parse_expenses.mjs` 流程與新的 CSV 流程目前並存，尚未決定是否棄用前者。
+- 使用者尚未提供實際要匯入的 CSV 資料（`data/expenses.csv`），目前只有範例格式檔。
+
+## 2026-08-02 — 開銷分類值由 `clothing` 統一改為 `shopping`
+
+### 背景
+使用者決定將內部開銷分類值 `clothing` 改為 `shopping`；中文顯示名稱維持「購物」，以避免前端、CSV、seed 與資料庫出現不同分類值。
+
+### 變更摘要
+- 前端 `ExpenseCategory`、分類顏色/標籤映射、分類下拉選單與 CSS badge class 全部改用 `shopping`。
+- CSV 匯入腳本的分類白名單與說明改用 `shopping`。
+- 舊 Markdown 解析器在處理洗衣服與 `macpac` 紀錄時改產生 `shopping`。
+- seed SQL、CSV 範例與設計/實作文件中的分類清單同步更新。
+- `data/migration_currency_and_rates.sql` 新增：
+  - `UPDATE expenses SET category = 'shopping' WHERE category = 'clothing';`
+  - 此語句可重複執行，供使用者將 Supabase 既有資料中的舊分類值一次轉換。
+
+### 修改的檔案
+| 類型 | 檔案 |
+|---|---|
+| 修改 | `app/src/lib/types.ts` |
+| 修改 | `app/src/app/ledger/page.tsx` |
+| 修改 | `app/src/components/AddExpenseModal.tsx` |
+| 修改 | `app/src/app/globals.css` |
+| 修改 | `scripts/import_expenses_csv.mjs` |
+| 修改 | `scripts/parse_expenses.mjs` |
+| 修改 | `data/seed_expenses.sql` |
+| 修改 | `data/expenses_template.csv` |
+| 修改 | `data/implementation_plan1.md` |
+| 修改 | `implementation.md` |
+| 修改 | `data/migration_currency_and_rates.sql` |
+
+## 2026-08-02 — 修正 Supabase enum migration 執行順序
+
+### 問題
+直接執行 `UPDATE expenses SET category = 'shopping' WHERE category = 'clothing';` 時，Supabase 回報 `expense_category` enum 尚未包含 `shopping`。
+
+### 修正
+- `data/migration_currency_and_rates.sql` 現在會先加入：
+  ```sql
+  ALTER TYPE public.expense_category ADD VALUE IF NOT EXISTS 'shopping';
+  ```
+- 因 PostgreSQL 要求新增 enum 值先提交後才能用於 `UPDATE`，migration 文件已改為明確要求分兩階段執行：先單獨執行 `ALTER TYPE`，成功後再重新執行完整 migration。
+
+## 2026-08-02 — 補齊 expense_category 的 `shopping` 與 `other`
+
+### 問題
+執行 `data/seed_expenses_from_csv.sql` 時，Supabase 回報 `invalid input value for enum expense_category: "shopping"`；該 seed 也包含 `other`，而遠端 enum 目前兩者都可能尚未建立。
+
+### 修正
+- `data/migration_currency_and_rates.sql` 補上 `shopping` 與 `other` 的 enum 初始化說明與語句。
+- `data/seed_expenses_from_csv.sql` 補上執行前置條件與正確的 enum 初始化指令。
+- 既有 `clothing` 轉換改用 `category::text = 'clothing'` 比對，避免舊 enum 定義不同時在 WHERE 解析階段失敗。
+
+### Supabase 執行順序
+1. 單獨執行 `ALTER TYPE ... 'shopping'`，確認成功並提交。
+2. 單獨執行 `ALTER TYPE ... 'other'`，確認成功並提交。
+3. 執行 `data/migration_currency_and_rates.sql`。
+4. 最後執行 `data/seed_expenses_from_csv.sql`。
+
+## 2026-08-02 — 記帳與分析頁：預付拆分、每日趨勢、篩選器
+
+### 背景
+花費資料已改為手動輸入 CSV 後批次匯入，收據 OCR 辨識不再需要。同時發現所有行前預付項目（機票 49714 / 45108、簽證、學費 442120、住宿、intercity、觀星、滑雪）都集中在 `2026-06-25` 這一天且只有台幣金額，導致分類佔比圓餅圖幾乎被「學習」吃掉，日均與趨勢也完全失真。
+
+### 變更摘要
+
+**1. 行前預付 vs 旅途中在地消費拆分**
+- `app/src/lib/money.ts` 新增：
+  - `isPrepaid()`：判斷規則為 `amount_nzd === null && amount_twd !== null`
+  - `partitionByPrepaid()`：把支出拆成 `prepaid` / `onsite` 兩組
+  - `buildDailyTotals()`：依日期彙總成每日台幣總額（含當日是否為概算的標記）
+  - `averageDailyTwd()`：平均每日花費，分母為實際有消費紀錄的天數
+  - `DailyTotal` 型別
+- 記帳頁新增「花費結構」卡：比例條 + 兩組金額與筆數 + 平均每日 + 最高單日。
+
+**2. 移除假 OCR 掃描卡片**
+- 移除 `isScanning` state、`handleScanClick`（原本只是 `setTimeout` + `alert`）、整個拖放上傳 UI 與脈衝動畫。
+- 原本佔據 dashboard 一半版位的卡片改為「花費結構」分析卡。
+- `app/package.json` 移除未使用的 `tesseract.js` 依賴。
+- `README.md` 的「已知限制」改為說明 OCR 已取消、預付判斷是推導而來、台幣趨勢多為概算。
+- `implementation.md` 的 3.1 狀態改為已處理。
+
+**3. 每日花費趨勢**
+- 新增全寬 `BarChart`：只包含在地消費（排除行前預付），金額統一換算台幣。
+- 平均值以 `ReferenceLine` 虛線標示；超過平均的日子用紅色長條，未超過用綠色。
+- X 軸只顯示月日，Y 軸以千元為單位縮寫。
+
+**4. 篩選與搜尋**
+- 新增篩選器卡：關鍵字（店家/品項/備註）、花費範圍（全部 / 旅途中消費 / 行前預付）、分類、起訖日期、排序（日期新舊、金額高低）。
+- 顯示「符合條件 N 筆（共 M 筆）」與「清除篩選」按鈕。
+- 總花費、分類佔比、花費結構、每日趨勢、明細清單全部改用 `filteredExpenses`，切換條件時上下數字一致。
+- 空狀態會區分「沒有符合篩選條件」與「還沒有任何記帳紀錄」。
+- `rateMap` 改用 `useMemo`，避免每次 render 重建而讓下游 `useMemo` 失效。
+
+### 修改的檔案
+| 類型 | 檔案 |
+|---|---|
+| 修改 | `app/src/lib/money.ts` |
+| 修改 | `app/src/app/ledger/page.tsx` |
+| 修改 | `app/package.json` |
+| 修改 | `README.md` |
+| 修改 | `implementation.md` |
+
+### 驗證
+- `npm run lint` → 0 errors、0 warnings
+- `npm run build` → 成功（7 個路由全部產生）
+
+### 未處理項目
+- 換匯成本分析（比較隱含匯率與 `exchange_rates` 官方匯率）尚未實作。
+- 店家排行榜、品項單價變化、分類 × 時間堆疊圖尚未實作。
+- 城市維度花費需要 `expenses` 新增城市欄位或用日期推斷，尚未決定做法。
+- 預算對比曲線需要使用者提供預算數字。

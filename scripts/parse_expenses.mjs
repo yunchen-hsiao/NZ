@@ -54,9 +54,9 @@ for (let line of lines) {
     } else if (prefix.includes('公車') || prefix.includes('uber') || prefix.includes('飛機')) {
       category = 'transport';
     } else if (prefix.includes('洗衣服')) {
-      category = 'clothing';
+      category = 'shopping';
     } else if (prefix.includes('macpac')) {
-      category = 'clothing';
+      category = 'shopping';
     } else if (prefix.includes('住宿')) {
       category = 'accommodation';
     }

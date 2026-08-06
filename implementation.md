@@ -82,7 +82,7 @@
 ### 3.1 `tesseract.js` 套件已安裝但完全沒被使用 — 🟢 低優先
 - **問題**：`ledger/page.tsx` 的「AI 掃描收據」功能目前只是 `setTimeout` 假動畫 + `alert()`，並未真正 import 或呼叫 `tesseract.js`。
 - **修復方向**：這是計畫中的功能尚未落地，非 bug。本次僅記錄，**不在本輪自動修復範圍**（涉及新功能開發，需另行規劃）。若短期不開發，可考慮先從 `package.json` 移除以減少依賴體積，之後真正要做 OCR 時再裝回來。
-- **狀態**：`[-]`（留待使用者決定：先移除依賴，或保留待後續開發）
+- **狀態**：`[x]` 已處理。使用者決定改用 CSV 手動匯入、不做收據辨識，因此假掃描 UI 已從 `ledger/page.tsx` 移除，`tesseract.js` 也已從 `package.json` 移除（`npm install` 後共移除 13 個套件）。
 
 ### 3.2 `cloudinary`（server SDK）套件已安裝但沒被使用 — 🟢 低優先
 - **問題**：目前上傳流程都是前端直接 `fetch` Cloudinary REST API（unsigned upload），沒有 import `cloudinary` npm 套件。
@@ -146,7 +146,78 @@ npm run build  → Compiled successfully, TypeScript 檢查通過，7 個路由�
 
 - 1.2 補齊資料庫 schema/RLS SQL 文件
 - 1.3 是否將 `data/` 納入版控
-- 3.1 / 3.2 是否移除 `tesseract.js`、`cloudinary` 依賴
+- 3.1 已於後續處理：`tesseract.js` 已移除（OCR 功能取消，改用 CSV 匯入）
+- 3.2 是否移除 `cloudinary`（server SDK）依賴
 - 3.5 inline style 大範圍重構
 - 4.1 README 更新（待上述項目確認後一併處理）
 - 4.2 是否 commit 本次與先前既有的變更
+
+---
+
+## 六、新功能：雙幣別記帳 + 每日歷史匯率 + CSV 批次匯入（2026-08-02）
+
+### 背景與需求
+使用者提出三個需求：
+1. 花費金額計算：一筆支出如果同時有紐幣、台幣紀錄，總金額算作台幣；只有紐幣就算紐幣。個別項目顯示時兩種幣別都顯示；總金額預設拆分顯示成「NZ$xx + NT$xx」。若使用者手動切換成「全部顯示為台幣」，才把只有紐幣的項目用當天歷史匯率概算，統一顯示成單一台幣數字。
+2. 自動抓取旅程期間每一天的 NZD → TWD 歷史匯率，對應到每一天，取代原本的手動輸入單一匯率。
+3. 開銷資料改成用 CSV 一次性批次匯入，需要定義好 CSV 欄位格式。
+
+### 設計決策
+- **`expenses` 資料表**新增 `amount_twd`（可為 null），並把 `amount_nzd` 改成可為 null（原本是 NOT NULL），加上 CHECK constraint 保證兩者至少有一個非 null。
+- **新增 `exchange_rates` 資料表**（`date` PK、`nzd_to_twd`、`source`），儲存每日歷史匯率，RLS 設定為公開可讀、僅登入者可寫（維持跟其他表一致的權限模型）。
+- **金額換算的計算規則**統一寫在 `app/src/lib/money.ts`，被 `/ledger` 頁面與首頁的統計卡共用，避免邏輯分散在多處：
+  - `splitTotal()`：依照「有台幣算台幣、只有紐幣算紐幣」規則做拆分小計。
+  - `sumAsTwd()` / `convertExpenseToTwd()`：全部換算成單一台幣數字（供「顯示為台幣」開關使用），只有紐幣的項目會查 `exchange_rates` 當天（或最接近日期）的匯率概算，並標記為「≈」估算值；已有台幣紀錄的項目視為真實金額，不會被概算覆蓋。
+  - `formatExpenseAmount()`：單筆支出的顯示字串，例如 `"NZ$25.75 + NT$466"`。
+- **歷史匯率資料來源**：[fawazahmed0/currency-api](https://github.com/fawazahmed0/exchange-api)（免費、無需 API Key、CDN 提供每日快照，資料回溯到很早期）。已實際執行 `scripts/fetch_exchange_rates.mjs` 抓取 2026-06-26 ~ 2026-07-28（本次旅程日期範圍）的每日匯率，範圍 17.97 ~ 18.98 TWD/NZD，寫入 `data/seed_exchange_rates.sql`。
+- **CSV 匯入**：定義好固定欄位（`date, store_name, item_name, amount_nzd, amount_twd, category, note`），寫死驗證規則（日期格式、category 白名單、金額至少一個非空），透過 `scripts/import_expenses_csv.mjs` 轉成可在 Supabase SQL Editor 執行的 INSERT SQL，用法與既有的 `parse_expenses.mjs`（Markdown → SQL）一致，維持專案原本「本地腳本產生 SQL、手動貼到 SQL Editor 執行」的慣例（因為目前只有 anon key，沒有 service role/DB 直連權限）。
+
+### 修改與新增的檔案
+| 類型 | 檔案 | 說明 |
+|---|---|---|
+| 新增 | `data/migration_currency_and_rates.sql` | Schema migration：`expenses.amount_twd`、CHECK constraint、`exchange_rates` 表 + RLS |
+| 新增 | `scripts/fetch_exchange_rates.mjs` | 抓取每日 NZD→TWD 歷史匯率，產生 `data/seed_exchange_rates.sql` |
+| 新增（已執行） | `data/seed_exchange_rates.sql` | 2026-06-26 ~ 2026-07-28 共 33 天的歷史匯率 INSERT SQL |
+| 新增（已執行） | `data/exchange_rates.json` | 上述匯率的 JSON 快取（除錯/重跑用） |
+| 新增 | `scripts/import_expenses_csv.mjs` | CSV → SQL 轉換腳本，含欄位驗證 |
+| 新增 | `data/expenses_template.csv` | CSV 欄位格式範例（含說明用的假資料） |
+| 新增 | `app/src/lib/money.ts` | 雙幣別計算與顯示邏輯（拆分小計、換算台幣、格式化） |
+| 修改 | `app/src/lib/types.ts` | `Expense` 新增 `amount_twd`、`amount_nzd` 改為可 null；新增 `ExchangeRate` 型別 |
+| 修改 | `app/src/app/ledger/page.tsx` | 移除自訂匯率輸入框，改為「全部顯示為台幣」開關；總花費/日期小計/店家小計/單筆金額全部改用 `money.ts` 的邏輯；圓餅圖改成一律換算台幣顯示佔比 |
+| 修改 | `app/src/app/page.tsx` | 首頁「總花費」統計卡改用拆分顯示（`NZ$xx + NT$xx`） |
+| 修改 | `app/src/components/AddExpenseModal.tsx` | 表單改成「紐幣金額」「台幣金額」兩個欄位（至少填一個），取代原本單一「金額 (NZD)」欄位 |
+
+### CSV 欄位格式（`data/expenses_template.csv`）
+```
+date,store_name,item_name,amount_nzd,amount_twd,category,note
+2026-06-27,uber,uber,25.75,466,transport,
+```
+| 欄位 | 必填 | 說明 |
+|---|---|---|
+| date | 必填 | `YYYY-MM-DD` |
+| store_name | 必填 | 店家名稱 |
+| item_name | 必填 | 品項名稱 |
+| amount_nzd | 選填* | 紐幣金額 |
+| amount_twd | 選填* | 台幣金額（實際刷卡/收據金額，非概算） |
+| category | 必填 | `food` / `transport` / `accommodation` / `learning` / `leisure` / `shopping` / `other` |
+| note | 選填 | 備註 |
+
+\* `amount_nzd`、`amount_twd` 至少要填一個。
+
+### 使用流程（給使用者）
+1. 在 Supabase SQL Editor 執行 `data/migration_currency_and_rates.sql`（一次性 schema 變更）。
+2. 執行 `data/seed_exchange_rates.sql`（已產生好的 33 天歷史匯率，若之後旅程日期不同可重跑 `node scripts/fetch_exchange_rates.mjs <開始日期> <結束日期>` 重新產生）。
+3. 依 `data/expenses_template.csv` 格式整理你的開銷資料成 `data/expenses.csv`，執行 `node scripts/import_expenses_csv.mjs` 產生 `data/seed_expenses_from_csv.sql`，再貼到 Supabase SQL Editor 執行。
+
+### 驗證結果
+```
+npm run lint   → 0 errors, 0 warnings
+npm run build  → Compiled successfully, TypeScript 檢查通過
+node scripts/fetch_exchange_rates.mjs → 成功抓取 33 天匯率
+node scripts/import_expenses_csv.mjs data/expenses_template.csv → 成功解析 4 筆範例資料
+```
+
+### 已知限制 / 待確認
+- 尚未實際對 Supabase 執行 `migration_currency_and_rates.sql`（僅有 anon key，沒有 DB 直連權限），需要使用者自行在 SQL Editor 執行一次。
+- `data/開銷.md` 目前的手寫紀錄格式（例如「uber：25.75紐幣 466-14台幣」）跟舊的 `scripts/parse_expenses.mjs` 是分開的兩套流程；若使用者之後想繼續用 CSV 為主，`parse_expenses.mjs` 可以考慮之後棄用或改成先轉出 CSV 再套用相同驗證規則，目前兩者並存。
+- 「顯示為台幣」開關在歷史匯率還沒載入完成前會被停用（避免顯示出用 0 匯率算出來的錯誤金額），首次進入頁面會有短暫的「匯率載入中」提示。
